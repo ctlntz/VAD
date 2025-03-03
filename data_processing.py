@@ -15,15 +15,15 @@ from scipy.signal import welch
 
 
 # Global variables
-FS = 512   # Frecventa de esantionare (Hz)
-WS = 1200  # Window size (miliseconds)
+FS = 8000   # Frecventa de esantionare (Hz)
+WS = 20  # Window size (miliseconds)
 OVR = 0.5  # Window overlap
 LOW = 20
-HIGH = 250
-NFFT = 1024
-NORM = 'z-score'
+HIGH = 3900
+NFFT = 256
+NORM = 'min-max' # min-max
 WINDOW = 'hamming'
-NUM_CHANNELS = 7
+NUM_CHANNELS = 1
 CROSS_VAL_SPLIT = True  ## Whether to split the dataset or not (False for cross-validation)
 N_SPLITS = 5
 ALL_TRAIN = True
@@ -37,7 +37,7 @@ def butter_bandpass(lowcut, highcut, fs, order=4):
     b, a = butter(order, [low, high], btype='band')
     return b, a
 
-def bandpass_filter(data, lowcut=20, highcut=250, fs=FS, order=4):
+def bandpass_filter(data, lowcut=LOW, highcut=HIGH, fs=FS, order=4):
     b, a = butter_bandpass(lowcut, highcut, fs, order=order)
     return filtfilt(b, a, data, axis=1)
 
@@ -67,57 +67,13 @@ def notch_filter(data, f0=50, Q=30):
     # data_filtered = signal.filtfilt(b, a, data, axis=1)
 
     # Manual segmentation
-    f0 = 50    # Frequency to be notched (Hz)
+    f0 = 50   # Frequency to be notched (Hz)
     bw = 2    # Bandwidth of the notch (Hz)# Design the Butterworth stopband 
     low = (f0 - bw / 2) / (FS / 2)  # Lower cutoff frequency (normalized)
     high = (f0 + bw / 2) / (FS / 2) # Upper cutoff frequency (normalized) 
     b, a = butter(N=4, Wn=[low, high], btype='bandstop', output='ba')
     data_filtered = signal.filtfilt(b, a, data, axis=1)
     return data_filtered
-
-
-# -------------------- *. Aliniere --------------------
-def align_circular_permutation(reference, recorded):
-    """
-    Aligns recorded channels to the reference using circular permutations.
-
-    reference: np.array, shape (n_samples, n_channels)
-        Reference signal (aligned correctly).
-    recorded: np.array, shape (n_samples, n_channels)
-        Recorded signal to be aligned.
-
-    Returns:
-        best_shift: int
-            The shift value (number of positions) for circular alignment.
-        permuted_recorded: np.array, shape (n_samples, n_channels)
-            The recorded signal with channels permuted circularly to match the reference.
-    """
-    n_channels = reference.shape[0]
-    best_shift = 0
-    best_correlation = -np.inf
-
-    # Test all circular permutations
-    for shift in range(n_channels):
-        # Apply circular shift
-        shifted_recorded = np.roll(recorded, shift, axis=0)
-        
-        # Calculate the average correlation across all channels
-        correlations = [
-            np.corrcoef(reference[:, i], shifted_recorded[:, i])[0, 1]
-            for i in range(n_channels)
-        ]
-        mean_correlation = np.mean(np.abs(correlations))
-
-        # Update the best shift
-        if mean_correlation > best_correlation:
-            best_correlation = mean_correlation
-            best_shift = shift
-
-    # Apply the best shift
-    permuted_recorded = np.roll(recorded, best_shift, axis=0)
-
-    return best_shift, permuted_recorded
-
 
 # -------------------- 3. Normalizare --------------------
 def normalize_data(signal, lower_perc=1, upper_perc=99, mode='z-score', ch_statistics=None):
@@ -203,7 +159,7 @@ def feature_normalization(data_list):
 
 
 # -------------------- 4. Ferestruire --------------------
-def create_windows(data, window_size=250, overlap=0.5, fs=1000, type='hamming'):
+def create_windows(data, window_size=WINDOW, overlap=0.5, fs=FS, type='hamming'):
     step = int(window_size * (1 - overlap) * fs / 1000)
     window_length = int(window_size * fs / 1000)
     windows = []
@@ -224,13 +180,30 @@ def calculate_features(window, freq=False):
         # Temporal features
         mean_abs_value = np.mean(np.abs(channel))
         zero_crossing_rate = np.sum(np.abs(np.diff(channel)) > 0.005)
-        # slope_sign_changes = np.sum(np.abs(np.diff(channel)[:-1] * np.diff(channel)[1:]) > 0.005)
         slope_sign_changes = sum(map(lambda x: (x >= 0).astype(float), (-np.diff(channel, prepend=1)[1:-1]*np.diff(channel)[1:])))
         waveform_length = np.sum(np.abs(np.diff(channel)))
         skewness = skew(channel)
         rms = np.sqrt(np.mean(channel**2))
         hjorth_activity = np.mean((channel - np.mean(channel))**2)
-        integrated_square_root_emg = np.sum(np.sqrt(np.abs(channel)))
+        
+        # Spectral domain features:
+        f, Pxx = welch(channel, fs=FS, nperseg=len(channel))
+        
+        # Mean Frequency (MNF) = ∑(f * PSD) / ∑(PSD)
+        mnf = np.sum(f * Pxx) / np.sum(Pxx)
+        
+        # Median Frequency (MDF): frecvența unde suma PSD-ului este 50% din total
+        cumulative_power = np.cumsum(Pxx)
+        mdf = f[np.where(cumulative_power >= np.sum(Pxx) / 2)[0][0]]
+        
+        # Total Spectral Power (TTP)
+        ttp = np.sum(Pxx)
+        
+        # Spectral Moments
+        s1 = np.sum(f * Pxx) / np.sum(Pxx)  # Momentul 1 (MNF)
+        s2 = np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx)  # Momentul 2
+        s3 = np.sum((f - mnf) ** 3 * Pxx) / np.sum(Pxx)  # Momentul 3
+        
         win_features_list = [
             mean_abs_value,
             zero_crossing_rate,
@@ -239,45 +212,19 @@ def calculate_features(window, freq=False):
             skewness,
             rms,
             hjorth_activity,
-            integrated_square_root_emg
+            mnf,
+            mdf,
+            ttp,
+            s1,
+            s2,
+            s3
         ]
-
-        if freq:
-            # Spectral domain features:
-            f, Pxx = welch(channel, fs=FS, nperseg=len(channel))
-            
-            # Mean Frequency (MNF) = ∑(f * PSD) / ∑(PSD)
-            mnf = np.sum(f * Pxx) / np.sum(Pxx)
-            
-            # Median Frequency (MDF): frecvența unde suma PSD-ului este 50% din total
-            cumulative_power = np.cumsum(Pxx)
-            mdf = f[np.where(cumulative_power >= np.sum(Pxx) / 2)[0][0]]
-            
-            # Total Spectral Power (TTP)
-            ttp = np.sum(Pxx)
-            
-            # Spectral Moments
-            s1 = np.sum(f * Pxx) / np.sum(Pxx)  # Momentul 1 (MNF)
-            s2 = np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx)  # Momentul 2
-            s3 = np.sum((f - mnf) ** 3 * Pxx) / np.sum(Pxx)  # Momentul 3
-
-            # Append the features
-            win_features_list.extend([
-                mnf,
-                mdf,
-                ttp,
-                s1,
-                s2,
-                s3
-            ])
-
         # Append all channel features
         features.extend(win_features_list)
     return features
 
-
 # -------------------- 5. Procesare fisiere --------------------
-def process_files(folder_path, output_path, fs, window_size=250, overlap=0.5, low=20, high=250, norm_mode='z-score'):
+def process_files(folder_path, output_path, fs, window_size=WINDOW, overlap=0.5, low=LOW, high=HIGH, norm_mode='min-max'):
     data_list = []
 
     # Splitting the subjects
@@ -326,11 +273,7 @@ def process_files(folder_path, output_path, fs, window_size=250, overlap=0.5, lo
             # Process the train split
             if id_subiect in train_split:
                 # Read the data
-                data = np.load(os.path.join(folder_path, file))
-
-                # Remove channel 4 -> no data for some users
-                keep_ch = [0, 1, 2, 3, 5, 6, 7]
-                data = data[keep_ch, :]                         
+                data = np.load(os.path.join(folder_path, file))               
 
                  # Filtrare bandpass
                 filtered_data = bandpass_filter(data, lowcut=low, highcut=high, fs=FS, order=4)
@@ -363,36 +306,24 @@ def process_files(folder_path, output_path, fs, window_size=250, overlap=0.5, lo
                                      norm_mode=norm_mode)
     
         # Crearea DataFrame-ului
-        columns = ["ID Subiect", "Nume", "Gen", "Clasa", "Split"]
+        columns = ["ID", "Clasa", "Split"]
+        
         # feature_names = ['MAV', 'ZCR', 'SSC', 'WL', 'SK', 'RMS', 'HA', 'ISEMG', 'MNF', 'MDF', 'TTP', 'MNP', 'PKF']
-        if FREQ_INCLUDED:
-            feature_names = ['MAV', 'ZCR', 'SSC', 'WL', 'SK', 'RMS', 'HA', 'ISEMG', 'MNF', 'MDF', 'TTP', 'S1', 'S2', 'S3']
-        else:
-            feature_names = ['MAV', 'ZCR', 'SSC', 'WL', 'SK', 'RMS', 'HA', 'ISEMG']
+        feature_names = ['MAV', 'ZCR', 'SSC', 'WL', 'SK', 'RMS', 'HA', 'ISEMG', 'MNF', 'MDF', 'TTP', 'S1', 'S2', 'S3']
         for i in range(NUM_CHANNELS):
             columns.extend([f"Ch_{i+1}_{f}" for f in feature_names])
 
         # Save the csv
         df = pd.DataFrame(data_list, columns=columns)
         if ALL_TRAIN:
-            freq_included = '_frequency_included' if FREQ_INCLUDED else ''
-            output_csv = os.path.join(output_path, f"semg_all_train{freq_included}.csv")
+            output_csv = os.path.join(output_path, f"audio_all_train.csv")
         else:
-            output_csv = os.path.join(output_path, f"semg_{FS}_{WS}_{OVR}_{WINDOW}_all_split_{split_idx}_frequency_included.csv")
+            output_csv = os.path.join(output_path, f"audio_{FS}_{WS}_{OVR}_{WINDOW}_all_split_{split_idx}.csv")
         df.to_csv(output_csv, index=False)
         print(f"Datele au fost salvate în {output_csv}")
-
-        # Correlation-based alignment
-        # references = []
-        # for i in range(3):
-        #     reference_sub = f"C:\\Users\\Alex\\Documents\\Alex\\master\\TB\\Proiect\\db\\Hand_ok\\Cosmin_Popa_{i}_l.npy"
-        #     reference = np.load(os.path.join(folder_path, reference_sub))
-        #     reference = bandpass_filter(reference, lowcut=low, highcut=high, fs=fs, order=4)
-        #     reference = nlms_filter(reference, mu=0.01, noise_frequency=50, fs=fs)
-        #     references.append(reference)
     return
 
-def process_subject(file_name, ch_statistics, window_size=250, overlap=0.5, low=20, high=250, norm_mode='z-score'):
+def process_subject(file_name, ch_statistics, window_size=WINDOIW, overlap=0.5, low=LOW, high=HIGH, norm_mode='min-max'):
     # Încarcă datele
     data = np.load(file_name)
 
@@ -555,7 +486,7 @@ def exponential_moving_average(signal, alpha=0.1):
 
 # -------------------- 6. Salvare DataFrame --------------------
 if __name__ == "__main__":
-    folder_path = "db\\Hand_without_test"  
+    folder_path = "db\\"  
     output_path = "db"  
 
     if ALL_TRAIN:
