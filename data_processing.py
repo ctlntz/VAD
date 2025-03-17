@@ -114,8 +114,8 @@ def feature_normalization(data_list):
     data_list = np.array(data_list, dtype=object)
 
     # Separate attributes and features
-    attributes = data_list[:, :4]  # First 4 columns (non-numeric attributes)
-    features = data_list[:, 4:].astype(float)  # Numeric features (convert to float)
+    attributes = data_list[:, :1]  # First 4 columns (non-numeric attributes)
+    features = data_list[:, 1:].astype(float)  # Numeric features (convert to float)
 
     # Get the unique subject IDs
     subject_ids = np.unique(attributes[:, 0])
@@ -330,7 +330,7 @@ def process_files(folder_path, output_path):
                                  files)
     
     # Crearea DataFrame-ului
-    columns = ["ID", "Gen", "Rec_Idx", "Class"]
+    columns = ["ID", "Class"]
    
     # Feature names
     feature_names = list(get_feature_dict().keys())
