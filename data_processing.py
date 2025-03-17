@@ -366,7 +366,7 @@ def process_subjects(folder_path, subject_files):
     for file_name in sorted(subject_files):
         if file_name.endswith(".wav"):
             # Extract info
-            id, g, idx, cls = file_name.split("_")
+            id = file_name
 
             # Process the subject and extract windows
             subject_path = os.path.join(folder_path, file_name)
@@ -374,7 +374,7 @@ def process_subjects(folder_path, subject_files):
 
             # Feature computation
             features = calculate_features(windows)
-            data_list.append([id, g, idx, cls.split('.')[0]] + features)                
+            data_list.append(id + features)                
 
     # Perform feature normalization
     data_list = feature_normalization(data_list)
