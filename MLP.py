@@ -76,17 +76,16 @@ if __name__ == '__main__':
     batch_size = 256
     num_epochs = 1000
     learning_rate = 0.001
-    input_size = 56  # Time-domain fetures only
-    # input_size = 98  # Frequency features included
+    input_size = 150
 
     Nsim = len(hidden_layers)*len(dropouts)
-    Kclass = 3
-    windows = [4000]
+    Kclass = 2
+    windows = [25]
     window_types = ['hamming']
     for window, window_type in zip(windows, window_types):
         idx_sim = 0
         splits = [0, 1, 2, 3, 4]  # From 0 to 4 for each split
-        file_paths = [f"db/semg_512_{window}_0.5_{window_type}_all_split_{i}.csv" for i in splits]
+        file_paths = [f"database/{id}_{window}_0.5_{window_type}_all_split_{i}.csv" for i in splits]
         METRIX_ = np.zeros((Nsim, 4))
 
         for hidden_sizes in hidden_layers:

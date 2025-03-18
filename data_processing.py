@@ -193,129 +193,158 @@ def median_filter_1d(signal, kernel_size: int = 7):
 def calculate_features(windows):
     period_values, amplitude_envelopes = [], []
     
-    # Init features list
-    all_features = get_feature_dict()
-
-    mfccs_list = [[] for _ in range(NMFCC)]
-
+    # Store features for each window
+    features_per_window = {
+        'mean_abs_value': [], 
+        'zero_crossing_rate': [],
+        'slope_sign_changes': [],
+        'skewness': [],
+        'rms': [],
+        'fundamental_freq': [],
+        'mnf': [],
+        'mdf': [],
+        'ttp': [],
+        's2': [],
+        's3': [],
+        's4': []
+    }
+    
+    # Initialize MFCC lists
+    for i in range(NMFCC):
+        features_per_window[f'mfcc{i}'] = []
+    
+    # Process each window
     for window in windows:
         # Temporal features
-        mean_abs_value = np.mean(np.abs(window))
-        zero_crossing_rate = np.sum(np.abs(np.diff(window)) > 0.005)
-        slope_sign_changes = sum(map(lambda x: (x >= 0).astype(float), (-np.diff(window, prepend=1)[1:-1]*np.diff(window)[1:])))
-        skewness = skew(window)
-        rms = np.sqrt(np.mean(window**2))
+        features_per_window['mean_abs_value'].append(np.mean(np.abs(window)))
+        features_per_window['zero_crossing_rate'].append(np.sum(np.abs(np.diff(window)) > 0.005))
+        features_per_window['slope_sign_changes'].append(sum(map(lambda x: (x >= 0).astype(float), 
+                                                         (-np.diff(window, prepend=1)[1:-1]*np.diff(window)[1:]))))
+        features_per_window['skewness'].append(skew(window))
+        features_per_window['rms'].append(np.sqrt(np.mean(window**2)))
 
         # Extract pitch (F0) using FFT
         fft_result = np.fft.rfft(window, NFFT)
         magnitude = np.abs(fft_result)
         max_idx = np.argmax(magnitude[1:]) + 1
         fundamental_freq = max_idx / NFFT * FS
-
-        # Plot the spectrum (TEST PURPOSES ONLY)
-        plot_spectrum(np.fft.rfftfreq(NFFT)[1:], magnitude[1:])
-
-        # # F0 extraction: (yaapt)
-        # f_min = 75          # min. F0 [Hz]
-        # f_max = 300         # max. F0 [Hz]
-        # SignalObj = pBASIC.SignalObj(window, FS)
-        # try:
-        #     PitchObj = pYAAPT.yaapt(SignalObj, **{'frame_length':WS, # Durata cadrelor in ms
-        #                             'tda_frame_length':WS,
-        #                             'f0_min':f_min, 'f0_max':f_max}) # Limitele in frecv pt frecv fundamentala
-        #     fundamental_freq_2 = PitchObj.samp_values
-        # except Exception as ex:
-        #     fundamental_freq_2 = 0
+        features_per_window['fundamental_freq'].append(fundamental_freq)
 
         # Save fundamental periods for jitter
         fundamental_period = 1 / fundamental_freq
         period_values.append(fundamental_period)
         
         # MFCCS
-        mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, 
-                                    n_fft=int(WS/1000*FS))
-        
-        for i in range(NMFCC): 
-            mfccs_list[i].append(mfccs[i])
+        mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, n_fft=int(WS/1000*FS))
+        for i in range(NMFCC):
+            features_per_window[f'mfcc{i}'].append(mfccs[i][0])  # Take first value if mfccs returns 2D array
         
         # Save max amplitude for shimmer
         amplitude_envelopes.append(np.max(np.abs(window)))
 
-        # Spectral domain features:
+        # Spectral domain features
         f, Pxx = welch(window, fs=FS, nperseg=len(window))
         
-        # Mean Frequency (MNF) = ∑(f * PSD) / ∑(PSD)
-        mnf = np.sum(f * Pxx) / np.sum(Pxx)
+        # Handle potential division by zero
+        if np.sum(Pxx) > 0.005:
+            features_per_window['mnf'].append(np.sum(f * Pxx) / np.sum(Pxx))
+        else:
+            features_per_window['mnf'].append(0)
         
-        # Median Frequency (MDF): frecvența unde suma PSD-ului este 50% din total
+        # Median Frequency (MDF)
         cumulative_power = np.cumsum(Pxx)
-        mdf = f[np.where(cumulative_power >= np.sum(Pxx) / 2)[0][0]]
+        if np.sum(Pxx) > 0:
+            mdf_idx = np.where(cumulative_power >= np.sum(Pxx) / 2)[0]
+            if len(mdf_idx) > 0:
+                features_per_window['mdf'].append(f[mdf_idx[0]])
+            else:
+                features_per_window['mdf'].append(0)
+        else:
+            features_per_window['mdf'].append(0)
         
         # Total Spectral Power (TTP)
-        ttp = np.sum(Pxx)
+        features_per_window['ttp'].append(np.sum(Pxx))
         
         # Spectral Moments
-        s2 = np.sqrt(np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx))  # Momentul 2
-        s3 = np.sum((f - mnf) ** 3 * Pxx) / (s2 ** 3 * np.sum(Pxx))   # Momentul 3
-        s4 = np.sum((f - mnf) ** 4 * Pxx) / (s2 ** 4 * np.sum(Pxx))   # Momentul 4
+        if np.sum(Pxx) > 0.005:
+            mnf = np.sum(f * Pxx) / np.sum(Pxx)
+            s2 = np.sqrt(np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx))
+            features_per_window['s2'].append(s2)
+            
+            if s2 > 0:
+                features_per_window['s3'].append(np.sum((f - mnf) ** 3 * Pxx) / (s2 ** 3 * np.sum(Pxx)))
+                features_per_window['s4'].append(np.sum((f - mnf) ** 4 * Pxx) / (s2 ** 4 * np.sum(Pxx)))
+            else:
+                features_per_window['s3'].append(0)
+                features_per_window['s4'].append(0)
+        else:
+            features_per_window['s2'].append(0)
+            features_per_window['s3'].append(0)
+            features_per_window['s4'].append(0)
 
-        # Store values in lists
-        all_features["mean_abs_value"].append(mean_abs_value)
-        all_features["zero_crossing_rate"].append(zero_crossing_rate)
-        all_features["slope_sign_changes"].append(slope_sign_changes)
-        all_features["skewness"].append(skewness)
-        all_features["rms"].append(rms)
-        all_features["fundamental_freq"].append(fundamental_freq)
-        for i in range(NMFCC):
-            all_features[f"mfcc_{i}"].append(mfccs[i])
-        all_features["rms"].append(rms)
-        all_features["mnf"].append(mnf)
-        all_features["mdf"].append(mdf)
-        all_features["ttp"].append(ttp)
-        all_features["s2"].append(s2)
-        all_features["s3"].append(s3)
-        all_features["s4"].append(s4)
-
-    # Yaapt for F0 (just to check)
-    # F0 extraction: (yaapt)
-    f_min = 75          # min. F0 [Hz]
-    f_max = 300         # max. F0 [Hz]
-    SignalObj = pBASIC.SignalObj(windows, FS)
-    try:
-        PitchObj = pYAAPT.yaapt(SignalObj, **{'frame_length':WS, # Durata cadrelor in ms
-                                'tda_frame_length':WS,
-                                'f0_min':f_min, 'f0_max':f_max}) # Limitele in frecv pt frecv fundamentala
-        fundamental_freq_2 = PitchObj.samp_values
-    except Exception as ex:
-        fundamental_freq_2 = 0
-    frq_2_mean = np.mean(fundamental_freq_2)
-    frq_2_std = np.std(fundamental_freq_2)
-
-    # Compute jitter and shimmer
+    # Calculate jitter and shimmer statistics
     jitter = np.abs(np.diff(period_values))
-    all_features["jitter"] = jitter
-    shimmer = np.abs(20 * np.log10(np.divide(amplitude_envelopes[1:], amplitude_envelopes[:-1])))
-    all_features["shimmer"] = shimmer
-
-    # Deltas 
-    for i in range(NMFCC): 
-        delta_mfccs = librosa.feature.delta(np.array(mfccs_list[i]).T)
-        delta2_mfccs = librosa.feature.delta(np.array(mfccs_list[i]).T, order=2)
-
-        all_features[f"dmfcc_{i}"].append(delta_mfccs)
-        all_features[f"ddmfcc_{i}"].append(delta2_mfccs)
-
-    # Calculate mean and std for each feature
-    feature_means = [np.mean(all_features[key]) for key in all_features]
-    feature_stds = [np.std(all_features[key]) for key in all_features]
-    all_features = zip(feature_means, feature_stds)
-
-    # Concatenate results into a final feature vector
+    # Handle potential division by zero in shimmer calculation
+    safe_denominator = np.maximum(amplitude_envelopes[:-1], 0.005)
+    shimmer = np.abs(20 * np.log10(np.divide(amplitude_envelopes[1:], safe_denominator)))
+    
+    # Calculate deltas for MFCCs
+    for i in range(NMFCC):
+        # Make sure we have a proper 2D array for delta calculation
+        mfcc_array = np.array(features_per_window[f'mfcc{i}']).reshape(-1, 1)
+        if mfcc_array.size > 0:
+            delta_mfccs = librosa.feature.delta(mfcc_array.T)
+            delta2_mfccs = librosa.feature.delta(mfcc_array.T, order=2)
+            features_per_window[f'dmfcc{i}'] = delta_mfccs[0]
+            features_per_window[f'ddmfcc{i}'] = delta2_mfccs[0]
+        else:
+            features_per_window[f'dmfcc{i}'] = [0]
+            features_per_window[f'ddmfcc{i}'] = [0]
+    
+    # Calculate mean for each feature
     final_features = []
-    for feat_mean, feat_std in all_features:
-        final_features.extend([feat_mean, feat_std])
-    return final_features
+    for feature_name in [
+        'mean_abs_value', 'zero_crossing_rate', 'slope_sign_changes', 'skewness', 'rms',
+        'fundamental_freq', 'mnf', 'mdf', 'ttp', 's2', 's3', 's4'
+    ]:
+        if feature_name in features_per_window and len(features_per_window[feature_name]) > 0:
+            final_features.append(np.mean(features_per_window[feature_name]))
+        else:
+            final_features.append(0)
+    
+    # Add mean of MFCCs
+    for i in range(NMFCC):
+        if f'mfcc{i}' in features_per_window and len(features_per_window[f'mfcc{i}']) > 0:
+            final_features.append(np.mean(features_per_window[f'mfcc{i}']))
+        else:
+            final_features.append(0)
+    
+    # Add mean of delta MFCCs
+    for i in range(NMFCC):
+        if f'dmfcc{i}' in features_per_window and len(features_per_window[f'dmfcc{i}']) > 0:
+            final_features.append(np.mean(features_per_window[f'dmfcc{i}']))
+        else:
+            final_features.append(0)
+    
+    # Add mean of delta-delta MFCCs
+    for i in range(NMFCC):
+        if f'ddmfcc{i}' in features_per_window and len(features_per_window[f'ddmfcc{i}']) > 0:
+            final_features.append(np.mean(features_per_window[f'ddmfcc{i}']))
+        else:
+            final_features.append(0)
+    
+    # Add mean of jitter and shimmer
+    if len(jitter) > 0:
+        final_features.append(np.mean(jitter))
+    else:
+        final_features.append(0)
+    
+    if len(shimmer) > 0:
+        final_features.append(np.mean(shimmer))
+    else:
+        final_features.append(0)
 
+    return final_features
 
 # -------------------- 5. Procesare fisiere --------------------
 def process_files(folder_path, output_path):
@@ -330,12 +359,65 @@ def process_files(folder_path, output_path):
                                  files)
     
     # Crearea DataFrame-ului
-    columns = ["ID", "Class"]
+    columns = ["ID"]
    
     # Feature names
-    feature_names = list(get_feature_dict().keys())
-    for f in feature_names:
-        columns.extend([f'{f}_mean', f'{f}_std'])
+    feature_names = [   'mean_abs_value', 
+                        'zero_crossing_rate',
+                        'slope_sign_changes',
+                        'skewness',
+                        'rms',
+                        'fundamental_freq',
+                        'mnf',
+                        'mdf',
+                        'ttp',
+                        's2',
+                        's3',
+                        's4',
+                        'mfcc0',
+                        'mfcc1',
+                        'mfcc2',
+                        'mfcc3',
+                        'mfcc4',
+                        'mfcc5',
+                        'mfcc6',
+                        'mfcc7',
+                        'mfcc8',
+                        'mfcc9',
+                        'mfcc10',
+                        'mfcc11',
+                        'mfcc12',
+                        'dmfcc0',
+                        'dmfcc1',
+                        'dmfcc2',
+                        'dmfcc3',
+                        'dmfcc4',
+                        'dmfcc5',
+                        'dmfcc6',
+                        'dmfcc7',
+                        'dmfcc8',
+                        'dmfcc9',
+                        'dmfcc10',
+                        'dmfcc11',
+                        'dmfcc12',
+                        'ddmfcc0',
+                        'ddmfcc1',
+                        'ddmfcc2',
+                        'ddmfcc3',
+                        'ddmfcc4',
+                        'ddmfcc5',
+                        'ddmfcc6',
+                        'ddmfcc7',
+                        'ddmfcc8',
+                        'ddmfcc9',
+                        'ddmfcc10',
+                        'ddmfcc11',
+                        'ddmfcc12',
+                        'jitter',
+                        'shimmer'
+                        ]
+    
+    columns.extend([f"{f}" for f in feature_names])
 
     # Save the csv
     df = pd.DataFrame(data_list, columns=columns)
@@ -345,40 +427,43 @@ def process_files(folder_path, output_path):
     print(f"Datele au fost salvate în {output_csv}")
 
 
-def process_subject(file_name):
+def process_subject(audio):
     # Load data
-    _, data = wav.read(file_name)
+    # _, data = wav.read(file_name)
 
     # Median filtering
     if FILT == "median":
-        data = median_filter_1d(data, kernel_size=7)
+        audio = median_filter_1d(audio, kernel_size=7)
 
     # Min-max normalization
-    data = data / np.max(np.abs(data))
+    audio = audio / np.max(np.abs(audio))
 
     # Windowing
-    windows = create_windows(data)
+    windows = create_windows(audio)
     return windows
 
 
-def process_subjects(folder_path, subject_files):
+def process_subjects(folder_path, files):
     data_list = []
-    for file_name in sorted(subject_files):
-        if file_name.endswith(".wav"):
-            # Extract info
-            id = file_name
-
-            # Process the subject and extract windows
-            subject_path = os.path.join(folder_path, file_name)
-            windows = process_subject(subject_path)
-
-            # Feature computation
+    
+    for file in files:
+        if file.endswith('.wav'):  # Assuming you're processing WAV files
+            file_path = os.path.join(folder_path, file)
+            
+            # Extract ID from filename
+            file_id = file.split('.')[0]  # Adjust this based on your naming convention
+            
+            # Load audio and extract windows
+            audio, _ = librosa.load(file_path, sr=FS)
+            windows = process_subject(audio)  # You'll need to implement this function
+            
+            # Calculate features
             features = calculate_features(windows)
-            data_list.append(id + features)                
-
-    # Perform feature normalization
-    data_list = feature_normalization(data_list)
-
+            
+            # Append ID and features to data_list
+            row = [file_id] + features
+            data_list.append(row)
+    
     return data_list
 
 
