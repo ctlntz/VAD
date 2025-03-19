@@ -301,50 +301,12 @@ def calculate_features(windows):
             features_per_window[f'dmfcc{i}'] = [0]
             features_per_window[f'ddmfcc{i}'] = [0]
     
-    # Calculate mean for each feature
-    final_features = []
-    for feature_name in [
-        'mean_abs_value', 'zero_crossing_rate', 'slope_sign_changes', 'skewness', 'rms',
-        'fundamental_freq', 'mnf', 'mdf', 'ttp', 's2', 's3', 's4'
-    ]:
-        if feature_name in features_per_window and len(features_per_window[feature_name]) > 0:
-            final_features.append(np.mean(features_per_window[feature_name]))
-        else:
-            final_features.append(0)
+    # Add jitter and shimmer to features_per_window
+    features_per_window['jitter'] = list(jitter) + [0]  # Add padding for the last window
+    features_per_window['shimmer'] = list(shimmer) + [0]  # Add padding for the last window
     
-    # Add mean of MFCCs
-    for i in range(NMFCC):
-        if f'mfcc{i}' in features_per_window and len(features_per_window[f'mfcc{i}']) > 0:
-            final_features.append(np.mean(features_per_window[f'mfcc{i}']))
-        else:
-            final_features.append(0)
-    
-    # Add mean of delta MFCCs
-    for i in range(NMFCC):
-        if f'dmfcc{i}' in features_per_window and len(features_per_window[f'dmfcc{i}']) > 0:
-            final_features.append(np.mean(features_per_window[f'dmfcc{i}']))
-        else:
-            final_features.append(0)
-    
-    # Add mean of delta-delta MFCCs
-    for i in range(NMFCC):
-        if f'ddmfcc{i}' in features_per_window and len(features_per_window[f'ddmfcc{i}']) > 0:
-            final_features.append(np.mean(features_per_window[f'ddmfcc{i}']))
-        else:
-            final_features.append(0)
-    
-    # Add mean of jitter and shimmer
-    if len(jitter) > 0:
-        final_features.append(np.mean(jitter))
-    else:
-        final_features.append(0)
-    
-    if len(shimmer) > 0:
-        final_features.append(np.mean(shimmer))
-    else:
-        final_features.append(0)
-
-    return final_features
+    # Return all features for all windows
+    return features_per_window
 
 # -------------------- 5. Procesare fisiere --------------------
 def process_files(folder_path, output_path):
@@ -461,8 +423,15 @@ def process_subjects(folder_path, files):
             features = calculate_features(windows)
             
             # Append ID and features to data_list
-            row = [file_id] + features
-            data_list.append(row)
+            features = calculate_features(windows)
+            num_windows = len(features['mean_abs_value'])  # Use any feature to get the window count
+
+            # For each window, create a row with file_id and all features for that window
+            for window_idx in range(num_windows):
+                row = [file_id]
+                for key in features:
+                    row.append(features[key][window_idx])
+                data_list.append(row)
     
     return data_list
 
