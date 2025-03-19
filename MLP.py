@@ -4,7 +4,7 @@ import scipy.io.wavfile as wav
 import pandas as pd
 import matplotlib.pyplot as plt
 from fractions import Fraction
-from python_speech_features import mfcc
+# from python_speech_features import mfcc
 from sklearn.decomposition import PCA
 from sklearn import datasets as SKdata
 from sklearn.utils import shuffle
@@ -61,6 +61,39 @@ def plot_confusion_matrix(y_true, y_pred, title):
     plt.savefig('plots/last_cf_matrix.png')
 
 
+# def read_csv(file_path):
+#     """
+#     Read a CSV file containing train and validation data.
+    
+#     Parameters:
+#     -----------
+#     file_path : str
+#         Path to the CSV file containing the data
+    
+#     Returns:
+#     --------
+#     tuple
+#         (X_train, y_train, X_val, y_val)
+#     """
+#     import pandas as pd
+    
+#     # Read the CSV file
+#     df = pd.read_csv(file_path)
+    
+#     # Split into train and validation sets
+#     train_df = df[df['set_type'] == 'train']
+#     val_df = df[df['set_type'] == 'val']
+    
+#     # Extract features and labels
+#     X_train = train_df.drop(['speech_label', 'set_type'], axis=1).values
+#     y_train = train_df['speech_label'].values
+#     X_val = val_df.drop(['speech_label', 'set_type'], axis=1).values
+#     y_val = val_df['speech_label'].values
+    
+#     return X_train, y_train, X_val, y_val
+
+
+
 if __name__ == '__main__':
     # Convert data to tensors and send to GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -70,22 +103,24 @@ if __name__ == '__main__':
     best_model = None
     best_val_score = -float('inf')
 
-    hidden_layers = [[128, 128, 128, 64, 32, 16], [32, 32, 16], [32, 32, 16], [32, 16], [128, 64], [64, 32, 32]]
-    dropouts = [0.3, 0.5]
+    hidden_layers = [[32, 32, 32, 16], [32, 32, 16, 16], [32, 32, 16], [32, 32, 8], [32, 16, 16], [32, 16, 8], [32, 16], [32, 8]]
+    dropouts = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
     output_size = 2
     batch_size = 256
-    num_epochs = 1000
+    num_epochs = 100
     learning_rate = 0.001
-    input_size = 150
+    input_size = 54
 
     Nsim = len(hidden_layers)*len(dropouts)
     Kclass = 2
     windows = [25]
     window_types = ['hamming']
+
     for window, window_type in zip(windows, window_types):
         idx_sim = 0
         splits = [0, 1, 2, 3, 4]  # From 0 to 4 for each split
-        file_paths = [f"database/{id}_{window}_0.5_{window_type}_all_split_{i}.csv" for i in splits]
+        file_paths = [f"split_data/fold_{i}.csv" for i in splits]
+        # file_paths_dict[(window, window_type)]
         METRIX_ = np.zeros((Nsim, 4))
 
         for hidden_sizes in hidden_layers:
@@ -93,7 +128,7 @@ if __name__ == '__main__':
                 METRIX = []
                 for split_index, file_path in enumerate(file_paths):
                     # Read data
-                    X_train_split, Y_train, X_val_split, Y_val = read_csv(file_path)
+                    X_train_split, Y_train, X_val_split, Y_val = read_csv(file_paths)
 
                     # Shuffle data
                     X_train_split, Y_train = shuffle(X_train_split, Y_train, random_state=42)
@@ -132,7 +167,16 @@ if __name__ == '__main__':
                         for batch_idx, (inputs, targets) in enumerate(train_loader):
                             optimizer.zero_grad()
                             # start = time()
+                            if targets.dim() > 1:
+                                targets = targets.argmax(dim=1)  # Convert to class indices
                             outputs = MODEL(inputs)
+                            # if outputs.shape[1] != Kclass:
+                            #     raise ValueError(f"Output shape {outputs.shape[1]} does not match number of classes {Kclass}.")
+
+                            # # Ensure targets are within the valid range
+                            # if targets.max().item() >= Kclass:
+                            #     raise ValueError(f"Target value {targets.max().item()} is out of bounds for the number of classes {Kclass}.")
+                            
                             # stop = time()
                             # iter_time.append(stop-start)
                             loss = criterion(outputs, targets)
@@ -141,6 +185,7 @@ if __name__ == '__main__':
                             epoch_loss += loss.item()
 
                         train_losses.append(epoch_loss / len(train_loader))
+                        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {train_losses[-1]:.4f}')
 
                         # Evaluate on validation set every few epochs
                         if (epoch) % 5 == 0:
@@ -148,6 +193,8 @@ if __name__ == '__main__':
                             val_loss = 0.0
                             with torch.inference_mode():
                                 for inputs, targets in val_loader:
+                                    if targets.dim() > 1:
+                                        targets = targets.argmax(dim=1)  # Convert to class indices
                                     outputs = MODEL(inputs)
                                     loss = criterion(outputs, targets)
                                     val_loss += loss.item()
@@ -188,6 +235,8 @@ if __name__ == '__main__':
                         train_outputs = []
                         train_targets = []
                         for inputs, targets in train_loader:
+                            if targets.dim() > 1:
+                                targets = targets.argmax(dim=1)  # Convert to class indices
                             outputs = MODEL(inputs).cpu().numpy()
                             train_outputs.append(outputs)
                             train_targets.append(targets.cpu().numpy())
@@ -197,6 +246,8 @@ if __name__ == '__main__':
                         val_outputs = []
                         val_targets = []
                         for inputs, targets in val_loader:
+                            if targets.dim() > 1:
+                                targets = targets.argmax(dim=1)  # Convert to class indices
                             outputs = MODEL(inputs).cpu().numpy()
                             val_outputs.append(outputs)
                             val_targets.append(targets.cpu().numpy())
@@ -249,8 +300,19 @@ if __name__ == '__main__':
                     print(f"New best model found with hidden_layers: {' '.join(map(str, hidden_sizes))}, Dropout: {dropout}, Val Mean UA: {best_val_score:.2f}")
 
                     # Save best model
-                    with open(f"models/best_mlp_{window}_{'_'.join(map(str, hidden_sizes))}_{dropout}_{acc_val_avg}_{f1_val_avg}_frequency_included.pkl", "wb") as f:
-                        pickle.dump(best_model, f)
+                    # Construct the file path
+                    file_path = f"models/best_mlp_{window}_{'_'.join(map(str, hidden_sizes))}_{dropout}_{acc_val_avg}_{f1_val_avg}.pkl"
+
+                    # Check if the file exists
+                    if os.path.exists(file_path):
+                        print(f"File '{file_path}' exists. Continuing...")
+                    else:
+                        # Create the directory if it doesn't exist
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        
+                        # Create the file (you can also write to it if needed)
+                        with open(file_path, 'wb') as f:
+                            pickle.dump(best_model, f)
                 
                 idx_sim += 1
 
