@@ -26,10 +26,10 @@ FREQ_FEAT = False
 
 ### mlp params dict ###
 mlp_params = {
-    "input_size": 56,
-    "hidden_layers": [128, 64, 64, 32, 16],
-    "dropout": 0.3,
-    "output_size": 3,
+    "input_size": 54,
+    "hidden_layers": [32, 32, 32, 16],
+    "dropout": 0.2,
+    "output_size": 2,
 }
 ########################
 
@@ -96,7 +96,7 @@ def read_channel_statistics(folder_path, ch_stats_path, fe_stats_path, fs=512, l
     if os.path.exists(ch_stats_path) and os.path.exists(fe_stats_path):
         return np.load(ch_stats_path), np.load(fe_stats_path)
     else:
-        data = [[] for _ in range(NUM_CHANNELS)]
+        data = []
         feature_data = []
         files = os.listdir(folder_path)
         
@@ -104,26 +104,16 @@ def read_channel_statistics(folder_path, ch_stats_path, fe_stats_path, fs=512, l
             # Read the data
             raw_data = np.load(os.path.join(folder_path, file))
 
-            # Remove channel 4 -> no data for some users
-            keep_ch = [0, 1, 2, 3, 5, 6, 7]
-            raw_data = raw_data[keep_ch, :]
-
-            # Bandpass filtering
-            filtered_data = bandpass_filter(raw_data, lowcut=low, highcut=high, fs=fs, order=4)
-
-            # Notch filtering
-            filtered_data = notch_filter(filtered_data)
-
             # Append the data to the channel list
-            for i in range(filtered_data.shape[0]):
-                data[i].extend(filtered_data[i].tolist())
+            for i in range(raw_data.shape[0]):
+                data[i].extend(raw_data[i].tolist())
 
             # Extract features and store
-            features = calculate_features(filtered_data, FREQ_FEAT)
+            features = calculate_features(raw_data, FREQ_FEAT)
             feature_data.append(features)
         
         # Compute channel statistics
-        ch_statistics = [(np.mean(channel), np.std(channel)) for channel in data]
+        ch_statistics = [(np.mean(data), np.std(data))]
         np.save(ch_stats_path, np.array(ch_statistics))
         
         # Compute feature statistics
@@ -134,15 +124,15 @@ def read_channel_statistics(folder_path, ch_stats_path, fe_stats_path, fs=512, l
 
 
 if __name__ == "__main__":
-    window_size = 1200
-    model_type = 'SVM'
-    folder_path = "db/Hand_without_test"
-    test_subjects_path = "db/Hand_with_test"
+    window_size = 25
+    model_type = 'mlp'
+    folder_path = "database"
+    test_subjects_path = "silero-vad/en_example.wav"
     ch_stats_file = f"stats_files/ch_stats_file_{window_size}.npy"
     fe_stats_file = f"stats_files/fe_stats_file_{window_size}.npy"
     output_path = "results/"
-    # model_path = f"models/{model_type}/best_{model_type}_{window_size}.pkl"
-    model_path = f"models/{model_type}_{window_size}_entire_set.pth"
+    model_path = f"models/best_{model_type}_{window_size}.pkl"
+    # model_path = f"models/{model_type}_{window_size}_entire_set.pth"
     train_model = False
     seq_windows = 3
     sliding_window = True

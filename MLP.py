@@ -128,7 +128,7 @@ if __name__ == '__main__':
                 METRIX = []
                 for split_index, file_path in enumerate(file_paths):
                     # Read data
-                    X_train_split, Y_train, X_val_split, Y_val = read_csv(file_paths)
+                    X_train_split, Y_train, X_val_split, Y_val = read_csv(file_path)
 
                     # Shuffle data
                     X_train_split, Y_train = shuffle(X_train_split, Y_train, random_state=42)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
                             optimizer.zero_grad()
                             # start = time()
                             # if targets.dim() > 1:
-                            targets = targets.argmax(dim=1)  # Convert to class indices
+                            # targets = targets.argmax(dim=1)  # Convert to class indices
                             outputs = MODEL(inputs)
                             # if outputs.shape[1] != Kclass:
                             #     raise ValueError(f"Output shape {outputs.shape[1]} does not match number of classes {Kclass}.")
@@ -193,8 +193,8 @@ if __name__ == '__main__':
                             val_loss = 0.0
                             with torch.inference_mode():
                                 for inputs, targets in val_loader:
-                                    if targets.dim() > 1:
-                                        targets = targets.argmax(dim=1)  # Convert to class indices
+                                    # if targets.dim() > 1:
+                                    #     targets = targets.argmax(dim=1)  # Convert to class indices
                                     outputs = MODEL(inputs)
                                     loss = criterion(outputs, targets)
                                     val_loss += loss.item()
