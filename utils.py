@@ -18,7 +18,7 @@ def read_csv(file_paths):
             print(data.head())  # Print the first few rows of the DataFrame
             print(f"Columns: {data.columns.tolist()}")  # Print the column names
 
-
+            
 
             # Keep only the relevant columns (excluding 'ID' and 'speech_label')
             data = data.loc[:, ~data.columns.isin(['ID'])]

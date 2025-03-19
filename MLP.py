@@ -167,8 +167,8 @@ if __name__ == '__main__':
                         for batch_idx, (inputs, targets) in enumerate(train_loader):
                             optimizer.zero_grad()
                             # start = time()
-                            if targets.dim() > 1:
-                                targets = targets.argmax(dim=1)  # Convert to class indices
+                            # if targets.dim() > 1:
+                            targets = targets.argmax(dim=1)  # Convert to class indices
                             outputs = MODEL(inputs)
                             # if outputs.shape[1] != Kclass:
                             #     raise ValueError(f"Output shape {outputs.shape[1]} does not match number of classes {Kclass}.")
