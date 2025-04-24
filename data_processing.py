@@ -86,25 +86,25 @@ amplitude_envelopes = []
 def get_feature_dict():
     # Init features list
     all_features = {}
-    for i in range(NMFCC):
-        all_features[f'mfcc_{i}'] = []
-        all_features[f'dmfcc_{i}'] = []
-        all_features[f'ddmfcc_{i}'] = []
+    # for i in range(NMFCC):
+    #     all_features[f'mfcc_{i}'] = []
+    #     all_features[f'dmfcc_{i}'] = []
+    #     all_features[f'ddmfcc_{i}'] = []
     all_features.update({
         "fundamental_freq": [],
         "mean_abs_value": [],
         "zero_crossing_rate": [],
-        "slope_sign_changes": [],
-        "skewness": [],
-        "rms": [],
-        "mnf": [],
-        "mdf": [],
-        "ttp": [],
-        "s2": [],
-        "s3": [],
-        "s4": [],
-        "jitter": [],
-        "shimmer": []
+        # "slope_sign_changes": [],
+        # "skewness": [],
+        # "rms": [],
+        # "mnf": [],
+        # "mdf": [],
+        "ttp": []
+        # "s2": [],
+        # "s3": [],
+        # "s4": [],
+        # "jitter": [],
+        # "shimmer": []
     })
     return all_features
 
@@ -191,37 +191,37 @@ def median_filter_1d(signal, kernel_size: int = 7):
 
 # -------------------- 5. Calculul trasaturilor --------------------
 def calculate_features(windows):
-    period_values, amplitude_envelopes = [], []
+    # period_values, amplitude_envelopes = [], []
     
     # Store features for each window
     features_per_window = {
         'mean_abs_value': [], 
         'zero_crossing_rate': [],
-        'slope_sign_changes': [],
-        'skewness': [],
-        'rms': [],
+        # 'slope_sign_changes': [],
+        # 'skewness': [],
+        # 'rms': [],
         'fundamental_freq': [],
-        'mnf': [],
-        'mdf': [],
-        'ttp': [],
-        's2': [],
-        's3': [],
-        's4': []
+        # 'mnf': [],
+        # 'mdf': [],
+        'ttp': []
+        # 's2': [],
+        # 's3': [],
+        # 's4': []
     }
     
     # Initialize MFCC lists
-    for i in range(NMFCC):
-        features_per_window[f'mfcc{i}'] = []
+    # for i in range(NMFCC):
+        # features_per_window[f'mfcc{i}'] = []
     
     # Process each window
     for window in windows:
         # Temporal features
         features_per_window['mean_abs_value'].append(np.mean(np.abs(window)))
         features_per_window['zero_crossing_rate'].append(np.sum(np.abs(np.diff(window)) > 0.005))
-        features_per_window['slope_sign_changes'].append(sum(map(lambda x: (x >= 0).astype(float), 
-                                                         (-np.diff(window, prepend=1)[1:-1]*np.diff(window)[1:]))))
-        features_per_window['skewness'].append(skew(window))
-        features_per_window['rms'].append(np.sqrt(np.mean(window**2)))
+        # features_per_window['slope_sign_changes'].append(sum(map(lambda x: (x >= 0).astype(float), 
+        #                                                  (-np.diff(window, prepend=1)[1:-1]*np.diff(window)[1:]))))
+        # features_per_window['skewness'].append(skew(window))
+        # features_per_window['rms'].append(np.sqrt(np.mean(window**2)))
 
         # Extract pitch (F0) using FFT
         fft_result = np.fft.rfft(window, NFFT)
@@ -231,79 +231,79 @@ def calculate_features(windows):
         features_per_window['fundamental_freq'].append(fundamental_freq)
 
         # Save fundamental periods for jitter
-        fundamental_period = 1 / fundamental_freq
-        period_values.append(fundamental_period)
+        # fundamental_period = 1 / fundamental_freq
+        # period_values.append(fundamental_period)
         
         # MFCCS
-        mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, n_fft=int(WS/1000*FS))
-        for i in range(NMFCC):
-            features_per_window[f'mfcc{i}'].append(mfccs[i][0])  # Take first value if mfccs returns 2D array
+        # mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, n_fft=int(WS/1000*FS))
+        # for i in range(NMFCC):
+        #     features_per_window[f'mfcc{i}'].append(mfccs[i][0])  # Take first value if mfccs returns 2D array
         
         # Save max amplitude for shimmer
-        amplitude_envelopes.append(np.max(np.abs(window)))
+        # amplitude_envelopes.append(np.max(np.abs(window)))
 
         # Spectral domain features
         f, Pxx = welch(window, fs=FS, nperseg=len(window))
         
         # Handle potential division by zero
-        if np.sum(Pxx) > 0.005:
-            features_per_window['mnf'].append(np.sum(f * Pxx) / np.sum(Pxx))
-        else:
-            features_per_window['mnf'].append(0)
+        # if np.sum(Pxx) > 0.005:
+        #     features_per_window['mnf'].append(np.sum(f * Pxx) / np.sum(Pxx))
+        # else:
+        #     features_per_window['mnf'].append(0)
         
         # Median Frequency (MDF)
-        cumulative_power = np.cumsum(Pxx)
-        if np.sum(Pxx) > 0:
-            mdf_idx = np.where(cumulative_power >= np.sum(Pxx) / 2)[0]
-            if len(mdf_idx) > 0:
-                features_per_window['mdf'].append(f[mdf_idx[0]])
-            else:
-                features_per_window['mdf'].append(0)
-        else:
-            features_per_window['mdf'].append(0)
+        # cumulative_power = np.cumsum(Pxx)
+        # if np.sum(Pxx) > 0:
+        #     mdf_idx = np.where(cumulative_power >= np.sum(Pxx) / 2)[0]
+        #     if len(mdf_idx) > 0:
+        #         features_per_window['mdf'].append(f[mdf_idx[0]])
+        #     else:
+        #         features_per_window['mdf'].append(0)
+        # else:
+        #     features_per_window['mdf'].append(0)
         
         # Total Spectral Power (TTP)
         features_per_window['ttp'].append(np.sum(Pxx))
         
         # Spectral Moments
-        if np.sum(Pxx) > 0.005:
-            mnf = np.sum(f * Pxx) / np.sum(Pxx)
-            s2 = np.sqrt(np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx))
-            features_per_window['s2'].append(s2)
+        # if np.sum(Pxx) > 0.005:
+            # mnf = np.sum(f * Pxx) / np.sum(Pxx)
+    #         s2 = np.sqrt(np.sum((f - mnf) ** 2 * Pxx) / np.sum(Pxx))
+    #         features_per_window['s2'].append(s2)
             
-            if s2 > 0:
-                features_per_window['s3'].append(np.sum((f - mnf) ** 3 * Pxx) / (s2 ** 3 * np.sum(Pxx)))
-                features_per_window['s4'].append(np.sum((f - mnf) ** 4 * Pxx) / (s2 ** 4 * np.sum(Pxx)))
-            else:
-                features_per_window['s3'].append(0)
-                features_per_window['s4'].append(0)
-        else:
-            features_per_window['s2'].append(0)
-            features_per_window['s3'].append(0)
-            features_per_window['s4'].append(0)
+    #         if s2 > 0:
+    #             features_per_window['s3'].append(np.sum((f - mnf) ** 3 * Pxx) / (s2 ** 3 * np.sum(Pxx)))
+    #             features_per_window['s4'].append(np.sum((f - mnf) ** 4 * Pxx) / (s2 ** 4 * np.sum(Pxx)))
+    #         else:
+    #             features_per_window['s3'].append(0)
+    #             features_per_window['s4'].append(0)
+    #     else:
+    #         features_per_window['s2'].append(0)
+    #         features_per_window['s3'].append(0)
+    #         features_per_window['s4'].append(0)
 
-    # Calculate jitter and shimmer statistics
-    jitter = np.abs(np.diff(period_values))
-    # Handle potential division by zero in shimmer calculation
-    safe_denominator = np.maximum(amplitude_envelopes[:-1], 0.005)
-    shimmer = np.abs(20 * np.log10(np.divide(amplitude_envelopes[1:], safe_denominator)))
+    # # Calculate jitter and shimmer statistics
+    # jitter = np.abs(np.diff(period_values))
+    # # Handle potential division by zero in shimmer calculation
+    # safe_denominator = np.maximum(amplitude_envelopes[:-1], 0.005)
+    # shimmer = np.abs(20 * np.log10(np.divide(amplitude_envelopes[1:], safe_denominator)))
     
     # Calculate deltas for MFCCs
-    for i in range(NMFCC):
-        # Make sure we have a proper 2D array for delta calculation
-        mfcc_array = np.array(features_per_window[f'mfcc{i}']).reshape(-1, 1)
-        if mfcc_array.size > 0:
-            delta_mfccs = librosa.feature.delta(mfcc_array.T)
-            delta2_mfccs = librosa.feature.delta(mfcc_array.T, order=2)
-            features_per_window[f'dmfcc{i}'] = delta_mfccs[0]
-            features_per_window[f'ddmfcc{i}'] = delta2_mfccs[0]
-        else:
-            features_per_window[f'dmfcc{i}'] = [0]
-            features_per_window[f'ddmfcc{i}'] = [0]
+    # for i in range(NMFCC):
+    #     # Make sure we have a proper 2D array for delta calculation
+    #     mfcc_array = np.array(features_per_window[f'mfcc{i}']).reshape(-1, 1)
+    #     if mfcc_array.size > 0:
+    #         delta_mfccs = librosa.feature.delta(mfcc_array.T)
+    #         delta2_mfccs = librosa.feature.delta(mfcc_array.T, order=2)
+    #         features_per_window[f'dmfcc{i}'] = delta_mfccs[0]
+    #         features_per_window[f'ddmfcc{i}'] = delta2_mfccs[0]
+    #     else:
+    #         features_per_window[f'dmfcc{i}'] = [0]
+    #         features_per_window[f'ddmfcc{i}'] = [0]
     
-    # Add jitter and shimmer to features_per_window
-    features_per_window['jitter'] = list(jitter) + [0]  # Add padding for the last window
-    features_per_window['shimmer'] = list(shimmer) + [0]  # Add padding for the last window
+    # # Add jitter and shimmer to features_per_window
+    # features_per_window['jitter'] = list(jitter) + [0]  # Add padding for the last window
+    # features_per_window['shimmer'] = list(shimmer) + [0]  # Add padding for the last window
     
     # Return all features for all windows
     return features_per_window
@@ -326,57 +326,8 @@ def process_files(folder_path, output_path):
     # Feature names
     feature_names = [   'mean_abs_value', 
                         'zero_crossing_rate',
-                        'slope_sign_changes',
-                        'skewness',
-                        'rms',
                         'fundamental_freq',
-                        'mnf',
-                        'mdf',
-                        'ttp',
-                        's2',
-                        's3',
-                        's4',
-                        'mfcc0',
-                        'mfcc1',
-                        'mfcc2',
-                        'mfcc3',
-                        'mfcc4',
-                        'mfcc5',
-                        'mfcc6',
-                        'mfcc7',
-                        'mfcc8',
-                        'mfcc9',
-                        'mfcc10',
-                        'mfcc11',
-                        'mfcc12',
-                        'dmfcc0',
-                        'dmfcc1',
-                        'dmfcc2',
-                        'dmfcc3',
-                        'dmfcc4',
-                        'dmfcc5',
-                        'dmfcc6',
-                        'dmfcc7',
-                        'dmfcc8',
-                        'dmfcc9',
-                        'dmfcc10',
-                        'dmfcc11',
-                        'dmfcc12',
-                        'ddmfcc0',
-                        'ddmfcc1',
-                        'ddmfcc2',
-                        'ddmfcc3',
-                        'ddmfcc4',
-                        'ddmfcc5',
-                        'ddmfcc6',
-                        'ddmfcc7',
-                        'ddmfcc8',
-                        'ddmfcc9',
-                        'ddmfcc10',
-                        'ddmfcc11',
-                        'ddmfcc12',
-                        'jitter',
-                        'shimmer'
+                        'ttp'
                         ]
     
     columns.extend([f"{f}" for f in feature_names])
@@ -384,7 +335,7 @@ def process_files(folder_path, output_path):
     # Save the csv
     df = pd.DataFrame(data_list, columns=columns)
     os.makedirs(output_path, exist_ok=True)
-    output_csv = os.path.join(output_path, f"{FS}_{WS}_{OVR}_{WINDOW}_{FILT}.csv")
+    output_csv = os.path.join(output_path, f"{FS}_{WS}_{OVR}_{WINDOW}_{FILT}_MAV_ZCR_F0_TTP_EQClasses.csv")
     df.to_csv(output_csv, index=False)
     print(f"Datele au fost salvate în {output_csv}")
 
@@ -424,7 +375,7 @@ def process_subjects(folder_path, files):
             
             # Append ID and features to data_list
             features = calculate_features(windows)
-            num_windows = len(features['mean_abs_value'])  # Use any feature to get the window count
+            num_windows = len(features['ttp'])  # Use any feature to get the window count
 
             # For each window, create a row with file_id and all features for that window
             for window_idx in range(num_windows):
@@ -436,21 +387,21 @@ def process_subjects(folder_path, files):
     return data_list
 
 
-def plot_spectrum(freq, spectrum, xlabel='Frecv', ylabel='Magn', filename_prefix='test'):
-    plt.figure(figsize=(15, 10))
+# def plot_spectrum(freq, spectrum, xlabel='Frecv', ylabel='Magn', filename_prefix='test'):
+#     plt.figure(figsize=(15, 10))
 
-    # Plot the single spectrum
-    plt.stem(freq, spectrum, linefmt=f'b-', markerfmt=f'bx', basefmt=" ", label='Signal Spectrum')
-    plt.title("Single Channel Spectrum")
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.tight_layout()
+#     # Plot the single spectrum
+#     plt.stem(freq, spectrum, linefmt=f'b-', markerfmt=f'bx', basefmt=" ", label='Signal Spectrum')
+#     plt.title("Single Channel Spectrum")
+#     plt.xlabel(xlabel)
+#     plt.ylabel(ylabel)
+#     plt.tight_layout()
 
-    # Save the plot to a file
-    plt.legend(loc='upper right', ncol=2, fontsize=8)
-    plt.tight_layout()
-    plt.savefig(f'{filename_prefix}_spectrum.png')
-    plt.close()
+#     # Save the plot to a file
+#     plt.legend(loc='upper right', ncol=2, fontsize=8)
+#     plt.tight_layout()
+#     plt.savefig(f'{filename_prefix}_spectrum.png')
+#     plt.close()
 
 
 # def save_channels_plot(t, filtered_data, x_label="Timp (s)", y_label='Amplitudine', title=''):
@@ -501,12 +452,12 @@ def plot_spectrum(freq, spectrum, xlabel='Frecv', ylabel='Magn', filename_prefix
 #     plt.close()
 
 
-def exponential_moving_average(signal, alpha=0.1):
-    ema_signal = np.zeros_like(signal)
-    ema_signal[0] = signal[0]
-    for i in range(1, len(signal)):
-        ema_signal[i] = alpha * signal[i] + (1 - alpha) * ema_signal[i-1]
-    return ema_signal
+# def exponential_moving_average(signal, alpha=0.1):
+#     ema_signal = np.zeros_like(signal)
+#     ema_signal[0] = signal[0]
+#     for i in range(1, len(signal)):
+#         ema_signal[i] = alpha * signal[i] + (1 - alpha) * ema_signal[i-1]
+#     return ema_signal
 
 
 # -------------------- 6. Salvare DataFrame --------------------
