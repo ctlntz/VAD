@@ -86,8 +86,8 @@ amplitude_envelopes = []
 def get_feature_dict():
     # Init features list
     all_features = {}
-    # for i in range(NMFCC):
-    #     all_features[f'mfcc_{i}'] = []
+    for i in range(NMFCC):
+        all_features[f'mfcc_{i}'] = []
     #     all_features[f'dmfcc_{i}'] = []
     #     all_features[f'ddmfcc_{i}'] = []
     all_features.update({
@@ -165,16 +165,6 @@ def create_windows(data):
     return np.array(windows)
 
 def median_filter_1d(signal, kernel_size: int = 7):
-    """
-    Apply a 1D median filter to a signal.
-    
-    Args:
-        signal: Input 1D array
-        kernel_size: Size of the median filter window (must be odd)
-        
-    Returns:
-        Filtered signal
-    """
     if kernel_size % 2 == 0:
         raise ValueError("Kernel size must be odd")
     
@@ -195,8 +185,8 @@ def calculate_features(windows):
     
     # Store features for each window
     features_per_window = {
-        'mean_abs_value': [], 
-        'zero_crossing_rate': [],
+        # 'mean_abs_value': [], 
+        # 'zero_crossing_rate': [],
         # 'slope_sign_changes': [],
         # 'skewness': [],
         # 'rms': [],
@@ -210,14 +200,14 @@ def calculate_features(windows):
     }
     
     # Initialize MFCC lists
-    # for i in range(NMFCC):
-        # features_per_window[f'mfcc{i}'] = []
+    for i in range(NMFCC):
+        features_per_window[f'mfcc{i}'] = []
     
     # Process each window
     for window in windows:
         # Temporal features
-        features_per_window['mean_abs_value'].append(np.mean(np.abs(window)))
-        features_per_window['zero_crossing_rate'].append(np.sum(np.abs(np.diff(window)) > 0.005))
+        # features_per_window['mean_abs_value'].append(np.mean(np.abs(window)))
+        # features_per_window['zero_crossing_rate'].append(np.sum(np.abs(np.diff(window)) > 0.005))
         # features_per_window['slope_sign_changes'].append(sum(map(lambda x: (x >= 0).astype(float), 
         #                                                  (-np.diff(window, prepend=1)[1:-1]*np.diff(window)[1:]))))
         # features_per_window['skewness'].append(skew(window))
@@ -235,9 +225,9 @@ def calculate_features(windows):
         # period_values.append(fundamental_period)
         
         # MFCCS
-        # mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, n_fft=int(WS/1000*FS))
-        # for i in range(NMFCC):
-        #     features_per_window[f'mfcc{i}'].append(mfccs[i][0])  # Take first value if mfccs returns 2D array
+        mfccs = librosa.feature.mfcc(y=window, sr=FS, n_mfcc=NMFCC, n_fft=int(WS/1000*FS))
+        for i in range(NMFCC):
+            features_per_window[f'mfcc{i}'].append(mfccs[i][0])  # Take first value if mfccs returns 2D array
         
         # Save max amplitude for shimmer
         # amplitude_envelopes.append(np.max(np.abs(window)))
@@ -324,8 +314,19 @@ def process_files(folder_path, output_path):
     columns = ["ID"]
    
     # Feature names
-    feature_names = [   'mean_abs_value', 
-                        'zero_crossing_rate',
+    feature_names = [   'mfcc0',
+                        'mfcc1',
+                        'mfcc2',
+                        'mfcc3',
+                        'mfcc4',
+                        'mfcc5',
+                        'mfcc6',
+                        'mfcc7',
+                        'mfcc8',
+                        'mfcc9',
+                        'mfcc10',
+                        'mfcc11',
+                        'mfcc12',
                         'fundamental_freq',
                         'ttp'
                         ]
@@ -335,7 +336,7 @@ def process_files(folder_path, output_path):
     # Save the csv
     df = pd.DataFrame(data_list, columns=columns)
     os.makedirs(output_path, exist_ok=True)
-    output_csv = os.path.join(output_path, f"{FS}_{WS}_{OVR}_{WINDOW}_{FILT}_MAV_ZCR_F0_TTP_EQClasses.csv")
+    output_csv = os.path.join(output_path, f"{FS}_{WS}_{OVR}_{WINDOW}_{FILT}_MFCCS_F0.csv")
     df.to_csv(output_csv, index=False)
     print(f"Datele au fost salvate în {output_csv}")
 
