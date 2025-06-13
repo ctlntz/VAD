@@ -91,18 +91,20 @@ if __name__ == '__main__':
     hidden_layers = [
                     #  [128, 64, 32, 16], 
                     #  [128, 32, 16, 16], 
-                     [64, 32, 16], 
-                     [64, 32, 8], 
-                     [32, 16, 16], 
-                     [32, 16, 8], 
-                     [64, 32], 
-                     [32, 16], 
+                    #  [64, 32, 16], 
+                    #  [64, 32, 8], 
+                    #  [32, 16, 16], 
+                    #  [32, 16, 8], 
+                    #  [64, 32], 
+                    #  [32, 16], 
                      [32, 8]
                     ]
-    dropouts = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    dropouts = [0.2
+                # , 0.3, 0.4, 0.5
+                ]
     output_size = 2
-    batch_size = 32
-    num_epochs = 500
+    batch_size = 16
+    num_epochs = 100
     learning_rate = 0.001
     input_size = 15
 
@@ -162,7 +164,7 @@ if __name__ == '__main__':
                     val_losses = []
 
                     # Early stopping parameters
-                    early_stop_patience = 20  # Number of epochs to wait for improvement
+                    early_stop_patience = 10  # Number of epochs to wait for improvement
                     best_val_loss = float('inf')
                     epochs_no_improve = 0
 

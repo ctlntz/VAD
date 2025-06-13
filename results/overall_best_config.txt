@@ -1,0 +1,17 @@
+Overall Best Model Configuration:
+==================================================
+Hidden Layers: [32, 8]
+Dropout: 0.2
+Window: 25
+Primary Score (Val Unweighted F1): 0.9776
+Model Path: models/overall_best_model_0.9776.pkl
+
+Detailed Metrics:
+Train Weighted Acc: 0.9781
+Train Unweighted Acc: 0.9767
+Train Weighted F1: 0.9779
+Train Unweighted F1: 0.9775
+Val Weighted Acc: 0.9782
+Val Unweighted Acc: 0.9766
+Val Weighted F1: 0.9780
+Val Unweighted F1: 0.9776

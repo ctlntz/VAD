@@ -1,0 +1,2 @@
+hidden_layers,dropout,window,train_weighted_acc,train_unweighted_acc,train_weighted_f1,train_unweighted_f1,val_weighted_acc,val_unweighted_acc,val_weighted_f1,val_unweighted_f1,primary_score,model_path
+"[32, 8]",0.2,25,0.9781,0.9767,0.9779,0.9775,0.9782,0.9766,0.978,0.9776,0.9776,models/best_mlp_25_32_8_0.2_0.9776.pkl
