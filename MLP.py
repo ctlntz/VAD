@@ -33,7 +33,6 @@ Nstep = int(np.ceil(Tstep*Fs))             # frame step size
 Nfft = int(pow(2, np.ceil(np.log2(Nw))))   # no. of FFT points
 
 #%%
-
 # Define MLP Model
 class MLP(nn.Module):
     def __init__(self, input_size, hidden_sizes, output_size, dropout_rate):

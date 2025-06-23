@@ -1,335 +1,174 @@
-#!/usr/bin/env python3
-"""
-CNN Model Weight and Bias Extractor for Vitis AI with HLS
-Supports PyTorch and TensorFlow/Keras pickled models
-"""
-
-import os
-import pickle
+import torch
 import numpy as np
 import argparse
 from pathlib import Path
+import json
 
-# Optional imports - will handle if not available
-try:
-    import torch
-    import torch.nn as nn
-    PYTORCH_AVAILABLE = True
-except ImportError:
-    PYTORCH_AVAILABLE = False
-    print("PyTorch not available - PyTorch models won't be supported")
-
-try:
-    import tensorflow as tf
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    print("TensorFlow not available - TensorFlow models won't be supported")
-
-class CNNWeightExtractor:
-    def __init__(self, model_path, output_dir="extracted_weights"):
-        self.model_path = model_path
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
-        self.model = None
-        self.framework = None
-        
-    def load_model(self):
-        """Load the pickled model and detect framework"""
-        try:
-            with open(self.model_path, 'rb') as f:
-                self.model = pickle.load(f)
-                
-            # Detect framework
-            if PYTORCH_AVAILABLE and isinstance(self.model, torch.nn.Module):
-                self.framework = 'pytorch'
-                self.model.eval()
-                print(f"Detected PyTorch model: {type(self.model).__name__}")
-                
-            elif TENSORFLOW_AVAILABLE and hasattr(self.model, 'layers'):
-                self.framework = 'tensorflow'
-                print(f"Detected TensorFlow/Keras model: {type(self.model).__name__}")
-                
-            else:
-                print("Unknown model type. Attempting generic extraction...")
-                self.framework = 'generic'
-                
-        except Exception as e:
-            print(f"Error loading model: {e}")
-            return False
-            
-        return True
+def get_weights_from_pth(pth_path, output_format='dict', save_path=None):
+    """
+    Extract weights from a PTH file
     
-    def quantize_weights(self, weights, scale=127.0, dtype=np.int8):
-        """Quantize weights to specified integer type"""
-        if dtype == np.int8:
-            max_val = 127
-            min_val = -128
-        elif dtype == np.int16:
-            max_val = 32767
-            min_val = -32768
-        else:
-            return weights
-            
-        quantized = np.round(weights * scale).astype(dtype)
-        quantized = np.clip(quantized, min_val, max_val)
-        return quantized
+    Args:
+        pth_path (str): Path to the PTH file
+        output_format (str): Format for output ('dict', 'list', 'numpy', 'json')
+        save_path (str, optional): Path to save extracted weights
     
-    def weights_to_c_header(self, weights, name, dtype="int8_t"):
-        """Convert numpy array to C header format"""
-        flat_weights = weights.flatten()
-        header = f"// {name} - Shape: {weights.shape}\n"
-        header += f"const {dtype} {name}[{len(flat_weights)}] = {{\n"
-        
-        for i, w in enumerate(flat_weights):
-            if i % 16 == 0:
-                header += "\n    "
-            header += f"{w}, "
-        
-        header = header.rstrip(", ") + "\n};\n\n"
-        return header
+    Returns:
+        dict or list: Extracted weights
+    """
+    pth_path = Path(pth_path)
     
-    def extract_pytorch_weights(self):
-        """Extract weights from PyTorch model"""
-        weights_dict = {}
-        c_header_content = "#ifndef MODEL_WEIGHTS_H\n#define MODEL_WEIGHTS_H\n\n"
-        
-        print("Extracting PyTorch model weights...")
-        
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                weight_data = param.detach().cpu().numpy()
-                weights_dict[name] = weight_data
-                
-                # Save as numpy file
-                np.save(self.output_dir / f"{name.replace('.', '_')}.npy", weight_data)
-                
-                # Quantize for Vitis AI
-                quantized = self.quantize_weights(weight_data)
-                np.save(self.output_dir / f"{name.replace('.', '_')}_quantized.npy", quantized)
-                
-                # Generate C header
-                c_name = name.replace('.', '_').replace('-', '_')
-                c_header_content += self.weights_to_c_header(quantized, c_name)
-                
-                print(f"  {name}: {weight_data.shape} -> quantized to int8")
-        
-        # Extract layer-wise weights and biases
-        layer_info = {}
-        for name, module in self.model.named_modules():
-            if isinstance(module, (nn.Conv2d, nn.Linear, nn.ConvTranspose2d)):
-                if hasattr(module, 'weight'):
-                    weight = module.weight.detach().cpu().numpy()
-                    layer_info[f"{name}_weight"] = weight
-                    
-                if hasattr(module, 'bias') and module.bias is not None:
-                    bias = module.bias.detach().cpu().numpy()
-                    layer_info[f"{name}_bias"] = bias
-        
-        # Save layer info
-        with open(self.output_dir / "layer_info.txt", "w") as f:
-            for layer_name, data in layer_info.items():
-                f.write(f"{layer_name}: {data.shape}\n")
-        
-        c_header_content += "#endif // MODEL_WEIGHTS_H\n"
-        with open(self.output_dir / "model_weights.h", "w") as f:
-            f.write(c_header_content)
-            
-        return weights_dict
+    if not pth_path.exists():
+        raise FileNotFoundError(f"PTH file not found: {pth_path}")
     
-    def extract_tensorflow_weights(self):
-        """Extract weights from TensorFlow/Keras model"""
-        weights_dict = {}
-        c_header_content = "#ifndef MODEL_WEIGHTS_H\n#define MODEL_WEIGHTS_H\n\n"
-        
-        print("Extracting TensorFlow/Keras model weights...")
-        
-        layer_info = {}
-        for i, layer in enumerate(self.model.layers):
-            layer_weights = layer.get_weights()
-            if len(layer_weights) > 0:
-                layer_name = layer.name or f"layer_{i}"
-                
-                # Extract weights
-                weights = layer_weights[0]
-                weights_dict[f"{layer_name}_weights"] = weights
-                layer_info[f"{layer_name}_weights"] = weights.shape
-                
-                # Save weights
-                np.save(self.output_dir / f"{layer_name}_weights.npy", weights)
-                
-                # Quantize and save
-                quantized_weights = self.quantize_weights(weights)
-                np.save(self.output_dir / f"{layer_name}_weights_quantized.npy", quantized_weights)
-                
-                # Generate C header for weights
-                c_name = f"{layer_name}_weights".replace('-', '_').replace('.', '_')
-                c_header_content += self.weights_to_c_header(quantized_weights, c_name)
-                
-                print(f"  {layer_name} weights: {weights.shape}")
-                
-                # Extract biases if present
-                if len(layer_weights) > 1:
-                    biases = layer_weights[1]
-                    weights_dict[f"{layer_name}_biases"] = biases
-                    layer_info[f"{layer_name}_biases"] = biases.shape
-                    
-                    # Save biases
-                    np.save(self.output_dir / f"{layer_name}_biases.npy", biases)
-                    
-                    # Quantize and save
-                    quantized_biases = self.quantize_weights(biases)
-                    np.save(self.output_dir / f"{layer_name}_biases_quantized.npy", quantized_biases)
-                    
-                    # Generate C header for biases
-                    c_name_bias = f"{layer_name}_biases".replace('-', '_').replace('.', '_')
-                    c_header_content += self.weights_to_c_header(quantized_biases, c_name_bias)
-                    
-                    print(f"  {layer_name} biases: {biases.shape}")
-        
-        # Save layer info
-        with open(self.output_dir / "layer_info.txt", "w") as f:
-            for layer_name, shape in layer_info.items():
-                f.write(f"{layer_name}: {shape}\n")
-        
-        c_header_content += "#endif // MODEL_WEIGHTS_H\n"
-        with open(self.output_dir / "model_weights.h", "w") as f:
-            f.write(c_header_content)
-            
-        return weights_dict
+    print(f"Loading PTH file: {pth_path}")
     
-    def extract_intermediate_activations(self, input_data=None):
-        """Extract intermediate node values for verification"""
-        if self.framework == 'pytorch' and input_data is not None:
-            activations = {}
+    try:
+        # Load the PTH file
+        data = torch.load(pth_path, map_location='cpu')
+        
+        print(f"Successfully loaded PTH file")
+        print(f"Data type: {type(data)}")
+        
+        weights = {}
+        
+        if isinstance(data, dict):
+            print(f"Found {len(data)} parameters/layers:")
             
-            def get_activation(name):
-                def hook(model, input, output):
-                    activations[name] = output.detach().cpu().numpy()
-                return hook
-            
-            # Register hooks
-            hooks = []
-            for name, module in self.model.named_modules():
-                if isinstance(module, (nn.Conv2d, nn.ReLU, nn.MaxPool2d, nn.Linear)):
-                    hook = module.register_forward_hook(get_activation(name))
-                    hooks.append(hook)
-            
-            # Run inference
-            with torch.no_grad():
-                if isinstance(input_data, np.ndarray):
-                    input_tensor = torch.from_numpy(input_data).float()
+            for key, value in data.items():
+                if isinstance(value, torch.Tensor):
+                    print(f"  {key}: {value.shape} ({value.dtype})")
+                    
+                    # Convert to numpy for easier handling
+                    if output_format == 'numpy':
+                        weights[key] = value.detach().numpy()
+                    elif output_format == 'list':
+                        weights[key] = value.detach().numpy().tolist()
+                    else:
+                        weights[key] = value
                 else:
-                    input_tensor = input_data
-                    
-                output = self.model(input_tensor)
-            
-            # Remove hooks
-            for hook in hooks:
-                hook.remove()
-            
-            # Save activations
-            for name, activation in activations.items():
-                np.save(self.output_dir / f"activation_{name.replace('.', '_')}.npy", activation)
-                print(f"  Saved activation {name}: {activation.shape}")
-            
-            return activations
+                    print(f"  {key}: {type(value)} (non-tensor)")
+                    weights[key] = value
         
-        return None
-    
-    def generate_model_summary(self, weights_dict):
-        """Generate a summary of the extracted model"""
-        summary_path = self.output_dir / "model_summary.txt"
+        elif isinstance(data, torch.Tensor):
+            print(f"Single tensor with shape: {data.shape}")
+            if output_format == 'numpy':
+                weights = data.detach().numpy()
+            elif output_format == 'list':
+                weights = data.detach().numpy().tolist()
+            else:
+                weights = data
         
-        with open(summary_path, "w") as f:
-            f.write(f"Model Extraction Summary\n")
-            f.write(f"=" * 50 + "\n")
-            f.write(f"Model Path: {self.model_path}\n")
-            f.write(f"Framework: {self.framework}\n")
-            f.write(f"Output Directory: {self.output_dir}\n\n")
-            
-            f.write("Extracted Parameters:\n")
-            f.write("-" * 30 + "\n")
-            
-            total_params = 0
-            for name, weights in weights_dict.items():
-                param_count = weights.size
-                total_params += param_count
-                f.write(f"{name:30s}: {str(weights.shape):15s} ({param_count:,} params)\n")
-            
-            f.write(f"\nTotal Parameters: {total_params:,}\n")
-            
-            # File listing
-            f.write(f"\nGenerated Files:\n")
-            f.write("-" * 20 + "\n")
-            for file_path in sorted(self.output_dir.glob("*")):
-                if file_path.is_file():
-                    f.write(f"  {file_path.name}\n")
-        
-        print(f"Model summary saved to: {summary_path}")
-    
-    def run_extraction(self, extract_activations=False, sample_input=None):
-        """Main extraction process"""
-        print(f"Starting extraction for: {self.model_path}")
-        
-        if not self.load_model():
-            return False
-        
-        # Extract weights based on framework
-        if self.framework == 'pytorch':
-            weights_dict = self.extract_pytorch_weights()
-        elif self.framework == 'tensorflow':
-            weights_dict = self.extract_tensorflow_weights()
         else:
-            print("Unsupported model type for extraction")
-            return False
+            print(f"Unsupported data type: {type(data)}")
+            weights = data
         
-        # Extract activations if requested
-        if extract_activations and sample_input is not None:
-            print("Extracting intermediate activations...")
-            self.extract_intermediate_activations(sample_input)
+        # Save weights if requested
+        if save_path:
+            save_path = Path(save_path)
+            
+            if output_format == 'json':
+                # Convert tensors to lists for JSON serialization
+                json_weights = {}
+                for key, value in weights.items():
+                    if isinstance(value, torch.Tensor):
+                        json_weights[key] = {
+                            'data': value.detach().numpy().tolist(),
+                            'shape': list(value.shape),
+                            'dtype': str(value.dtype)
+                        }
+                    elif isinstance(value, np.ndarray):
+                        json_weights[key] = {
+                            'data': value.tolist(),
+                            'shape': list(value.shape),
+                            'dtype': str(value.dtype)
+                        }
+                    else:
+                        json_weights[key] = value
+                
+                with open(save_path.with_suffix('.json'), 'w') as f:
+                    json.dump(json_weights, f, indent=2)
+                print(f"✅ Saved weights as JSON to: {save_path.with_suffix('.json')}")
+            
+            elif output_format == 'numpy':
+                np.savez(save_path.with_suffix('.npz'), **weights)
+                print(f"✅ Saved weights as NPZ to: {save_path.with_suffix('.npz')}")
+            
+            else:
+                torch.save(weights, save_path.with_suffix('.pth'))
+                print(f"✅ Saved weights as PTH to: {save_path.with_suffix('.pth')}")
         
-        # Generate summary
-        self.generate_model_summary(weights_dict)
+        return weights
+    
+    except Exception as e:
+        print(f"❌ Error extracting weights: {str(e)}")
+        raise
+
+def analyze_weights(weights):
+    """Analyze the weights and provide statistics"""
+    print("\n📊 Weight Analysis:")
+    print("=" * 50)
+    
+    if isinstance(weights, dict):
+        total_params = 0
         
-        print(f"\nExtraction complete! Files saved to: {self.output_dir}")
-        print("Generated files:")
-        print("  - *.npy: Raw weights/biases")
-        print("  - *_quantized.npy: Quantized weights (INT8)")
-        print("  - model_weights.h: C header file for HLS")
-        print("  - layer_info.txt: Layer information")
-        print("  - model_summary.txt: Complete summary")
+        for key, value in weights.items():
+            if isinstance(value, (torch.Tensor, np.ndarray)):
+                num_params = np.prod(value.shape)
+                total_params += num_params
+                
+                print(f"\n{key}:")
+                print(f"  Shape: {value.shape}")
+                print(f"  Parameters: {num_params:,}")
+                print(f"  Mean: {np.mean(value.detach().numpy() if isinstance(value, torch.Tensor) else value):.6f}")
+                print(f"  Std: {np.std(value.detach().numpy() if isinstance(value, torch.Tensor) else value):.6f}")
+                print(f"  Min: {np.min(value.detach().numpy() if isinstance(value, torch.Tensor) else value):.6f}")
+                print(f"  Max: {np.max(value.detach().numpy() if isinstance(value, torch.Tensor) else value):.6f}")
         
-        return True
+        print(f"\n🔢 Total Parameters: {total_params:,}")
+        print(f"💾 Estimated Memory: {total_params * 4 / (1024**2):.2f} MB (float32)")
+    
+    elif isinstance(weights, (torch.Tensor, np.ndarray)):
+        num_params = np.prod(weights.shape)
+        print(f"Single tensor/array:")
+        print(f"  Shape: {weights.shape}")
+        print(f"  Parameters: {num_params:,}")
+        print(f"  Mean: {np.mean(weights.detach().numpy() if isinstance(weights, torch.Tensor) else weights):.6f}")
+        print(f"  Std: {np.std(weights.detach().numpy() if isinstance(weights, torch.Tensor) else weights):.6f}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract CNN weights for Vitis AI HLS")
-    parser.add_argument("model_path", help="Path to the pickled model file")
-    parser.add_argument("-o", "--output", default="extracted_weights", 
-                       help="Output directory (default: extracted_weights)")
-    parser.add_argument("--extract-activations", action="store_true",
-                       help="Extract intermediate activations")
-    parser.add_argument("--input-shape", nargs="+", type=int,
-                       help="Input shape for activation extraction (e.g., 1 3 224 224)")
+    parser = argparse.ArgumentParser(description="Extract weights from PTH files")
+    parser.add_argument("input", help="Input PTH file path")
+    parser.add_argument("-f", "--format", choices=['dict', 'list', 'numpy', 'json'], 
+                       default='dict', help="Output format")
+    parser.add_argument("-o", "--output", help="Output file path to save weights")
+    parser.add_argument("--analyze", action="store_true", help="Analyze weights statistics")
+    parser.add_argument("--layer", help="Extract specific layer/parameter by name")
     
     args = parser.parse_args()
     
-    # Create sample input if shape provided
-    sample_input = None
-    if args.input_shape:
-        sample_input = np.random.randn(*args.input_shape).astype(np.float32)
-        print(f"Created sample input with shape: {sample_input.shape}")
-    
-    # Run extraction
-    extractor = CNNWeightExtractor(args.model_path, args.output)
-    success = extractor.run_extraction(
-        extract_activations=args.extract_activations,
-        sample_input=sample_input
-    )
-    
-    if not success:
-        print("Extraction failed!")
-        exit(1)
+    try:
+        weights = get_weights_from_pth(args.input, args.format, args.output)
+        
+        # Extract specific layer if requested
+        if args.layer:
+            if isinstance(weights, dict) and args.layer in weights:
+                weights = {args.layer: weights[args.layer]}
+                print(f"\n🎯 Extracted layer: {args.layer}")
+            else:
+                print(f"❌ Layer '{args.layer}' not found")
+                if isinstance(weights, dict):
+                    print(f"Available layers: {list(weights.keys())}")
+                return
+        
+        # Analyze weights if requested
+        if args.analyze:
+            analyze_weights(weights)
+        
+        print(f"\n✅ Successfully extracted weights from {args.input}")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     main()
